@@ -26,9 +26,9 @@ def optimize_hour(hour: int, consumers: list[Consumer], generators: list[Generat
             served_energy=served_energy,
             generated_energy=generated_energy,
             hourly_cost=hourly_cost,
-            active_generators=active_generators,
-            powered_consumers=powered_names,
-            disconnected_consumers=disconnected_names,
+            active_generators=tuple(active_generators),
+            powered_consumers=tuple(powered_names),
+            disconnected_consumers=tuple(disconnected_names),
         )
 
         candidate_key = (

@@ -38,7 +38,7 @@ class SimulatorTests(unittest.TestCase):
 
         hour_11 = result.hours[11]
         self.assertEqual(hour_11.served_energy, 32.0)
-        self.assertEqual(hour_11.disconnected_consumers, ["office_a"])
+        self.assertEqual(hour_11.disconnected_consumers, ("office_a",))
 
     def test_generation_always_covers_served_energy(self) -> None:
         for scenario_name in ("surplus_case.json", "shortage_case.json"):
@@ -83,9 +83,9 @@ class SimulatorTests(unittest.TestCase):
             self.assertEqual(hour.served_energy, 0.0)
             self.assertEqual(hour.generated_energy, 0.0)
             self.assertEqual(hour.hourly_cost, 0.0)
-            self.assertEqual(hour.active_generators, [])
+            self.assertEqual(hour.active_generators, ())
             self.assertEqual(len(hour.powered_consumers), 2)
-            self.assertEqual(hour.disconnected_consumers, [])
+            self.assertEqual(hour.disconnected_consumers, ())
 
     def test_optimizer_prioritizes_number_of_powered_consumers(self) -> None:
         scenario = {
@@ -115,7 +115,7 @@ class SimulatorTests(unittest.TestCase):
         hour = result.hours[0]
         self.assertEqual(len(hour.powered_consumers), 2)
         self.assertEqual(set(hour.powered_consumers), {"consumer_a", "consumer_b"})
-        self.assertEqual(hour.disconnected_consumers, ["consumer_c"])
+        self.assertEqual(hour.disconnected_consumers, ("consumer_c",))
         self.assertEqual(hour.served_energy, 8.0)
 
     def test_optimizer_prioritizes_served_energy_when_consumer_count_is_equal(self) -> None:
@@ -144,7 +144,7 @@ class SimulatorTests(unittest.TestCase):
             tmp_path.unlink(missing_ok=True)
 
         hour = result.hours[0]
-        self.assertEqual(hour.powered_consumers, ["consumer_b"])
+        self.assertEqual(hour.powered_consumers, ("consumer_b",))
         self.assertEqual(set(hour.disconnected_consumers), {"consumer_a", "consumer_c"})
         self.assertEqual(hour.served_energy, 5.0)
 
@@ -178,7 +178,7 @@ class SimulatorTests(unittest.TestCase):
             tmp_path.unlink(missing_ok=True)
 
         hour = result.hours[0]
-        self.assertEqual(hour.active_generators, ["solar_alpha"])
+        self.assertEqual(hour.active_generators, ("solar_alpha",))
         self.assertEqual(hour.hourly_cost, 5.0)
 
     def test_simulation_is_deterministic(self) -> None:
@@ -352,6 +352,29 @@ class SimulatorTests(unittest.TestCase):
             "description": "profiles must contain 24 values",
             "consumers": [
                 {"name": "consumer_a", "hourly_demand": [1] * 23},
+            ],
+            "generators": [
+                {
+                    "name": "diesel_alpha",
+                    "kind": "diesel",
+                    "hourly_generation": [10] * 24,
+                    "cost_per_unit": 5,
+                }
+            ],
+        }
+
+        tmp_path = self._write_temp_scenario(scenario)
+        try:
+            with self.assertRaises(ValueError):
+                load_scenario(tmp_path)
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+    def test_missing_required_field_is_reported_as_value_error(self) -> None:
+        scenario = {
+            "description": "missing top-level name",
+            "consumers": [
+                {"name": "consumer_a", "hourly_demand": [1] * 24},
             ],
             "generators": [
                 {

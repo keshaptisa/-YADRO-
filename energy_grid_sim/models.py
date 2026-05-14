@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from typing import Literal
 
@@ -70,9 +71,9 @@ class HourPlan:
     served_energy: float
     generated_energy: float
     hourly_cost: float
-    active_generators: list[str]
-    powered_consumers: list[str]
-    disconnected_consumers: list[str]
+    active_generators: tuple[str, ...]
+    powered_consumers: tuple[str, ...]
+    disconnected_consumers: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -113,7 +114,7 @@ def _validate_profile(entity_name: str, profile: list[float], profile_type: str)
 
 
 def _validate_unique_names(names: list[str], entity_type: str) -> None:
-    duplicates = sorted({name for name in names if names.count(name) > 1})
+    duplicates = sorted(name for name, count in Counter(names).items() if count > 1)
     if duplicates:
         duplicate_list = ", ".join(duplicates)
         raise ValueError(
