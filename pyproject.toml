@@ -1,0 +1,9 @@
+[project]
+name = "energy-grid-sim"
+version = "0.1.0"
+description = "24-hour energy grid simulator with hourly generator scheduling."
+requires-python = ">=3.11"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
