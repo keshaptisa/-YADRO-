@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from energy_grid_sim.loader import load_scenario
+from energy_grid_sim.reporting import render_text_report
 from energy_grid_sim.simulator import simulate_day
 
 
@@ -48,6 +49,10 @@ class SimulatorTests(unittest.TestCase):
     def test_coverage_ratio_for_shortage_case_is_below_one(self) -> None:
         result = simulate_day(load_scenario(ROOT / "data" / "shortage_case.json"))
         self.assertLess(result.coverage_ratio, 1.0)
+
+    def test_surplus_case_total_cost_matches_expected_value(self) -> None:
+        result = simulate_day(load_scenario(ROOT / "data" / "surplus_case.json"))
+        self.assertEqual(result.total_cost, 4487.4)
 
     def test_zero_demand_requires_no_generation_and_zero_cost(self) -> None:
         scenario = {
@@ -175,6 +180,62 @@ class SimulatorTests(unittest.TestCase):
         hour = result.hours[0]
         self.assertEqual(hour.active_generators, ["solar_alpha"])
         self.assertEqual(hour.hourly_cost, 5.0)
+
+    def test_simulation_is_deterministic(self) -> None:
+        scenario = load_scenario(ROOT / "data" / "shortage_case.json")
+        first_result = simulate_day(scenario)
+        second_result = simulate_day(scenario)
+
+        self.assertEqual(first_result, second_result)
+        self.assertEqual(render_text_report(first_result), render_text_report(second_result))
+
+    def test_report_contains_key_sections(self) -> None:
+        result = simulate_day(load_scenario(ROOT / "data" / "surplus_case.json"))
+        report = render_text_report(result)
+
+        self.assertIn("Сценарий: surplus_case", report)
+        self.assertIn("Час | Спрос", report)
+        self.assertIn("Суммарный спрос:", report)
+        self.assertIn("Итоговая стоимость:", report)
+
+    def test_full_pipeline_runs_for_both_embedded_scenarios(self) -> None:
+        for scenario_name in ("surplus_case.json", "shortage_case.json"):
+            scenario = load_scenario(ROOT / "data" / scenario_name)
+            result = simulate_day(scenario)
+            report = render_text_report(result)
+
+            self.assertTrue(report)
+            self.assertIn("Сценарий:", report)
+
+    def test_fractional_values_are_supported(self) -> None:
+        scenario = {
+            "name": "fractional_values",
+            "description": "fractional values should be handled via scaling",
+            "consumers": [
+                {"name": "consumer_a", "hourly_demand": [1.5] * 24},
+                {"name": "consumer_b", "hourly_demand": [2.0] * 24},
+            ],
+            "generators": [
+                {
+                    "name": "diesel_alpha",
+                    "kind": "diesel",
+                    "hourly_generation": [3.5] * 24,
+                    "cost_per_unit": 2.0,
+                }
+            ],
+        }
+
+        tmp_path = self._write_temp_scenario(scenario)
+        try:
+            result = simulate_day(load_scenario(tmp_path))
+        finally:
+            tmp_path.unlink(missing_ok=True)
+
+        hour = result.hours[0]
+        self.assertEqual(hour.served_energy, 3.5)
+        self.assertEqual(hour.generated_energy, 3.5)
+        self.assertEqual(hour.hourly_cost, 7.0)
+        self.assertEqual(len(hour.powered_consumers), 2)
 
     def test_duplicate_consumer_names_are_rejected(self) -> None:
         scenario = {
