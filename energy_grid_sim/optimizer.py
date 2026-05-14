@@ -1,13 +1,14 @@
 from __future__ import annotations
 
+from decimal import Decimal
 from itertools import combinations
 
 from .models import Consumer, Generator, HourPlan
 
 
 def optimize_hour(hour: int, consumers: list[Consumer], generators: list[Generator]) -> HourPlan:
-    consumer_plans = _enumerate_consumer_subsets(hour, consumers)
     generator_plans = _enumerate_generator_subsets(hour, generators)
+    consumer_plans = _build_consumer_plans(hour, consumers, generator_plans)
 
     best_plan: HourPlan | None = None
     best_key: tuple[int, float, float, float, int] | None = None
@@ -48,20 +49,43 @@ def optimize_hour(hour: int, consumers: list[Consumer], generators: list[Generat
     return best_plan
 
 
-def _enumerate_consumer_subsets(
-    hour: int, consumers: list[Consumer]
+def _build_consumer_plans(
+    hour: int,
+    consumers: list[Consumer],
+    generator_plans: list[tuple[list[str], float, float]],
 ) -> list[tuple[list[str], list[str], float]]:
-    plans: list[tuple[list[str], list[str], float]] = []
+    hour_demands = [consumer.hourly_demand[hour] for consumer in consumers]
+    max_generation = max((plan[1] for plan in generator_plans), default=0.0)
 
-    for subset_size in range(len(consumers) + 1):
-        for subset in combinations(consumers, subset_size):
-            powered_names = [consumer.name for consumer in subset]
-            powered_set = set(powered_names)
-            disconnected_names = [
-                consumer.name for consumer in consumers if consumer.name not in powered_set
-            ]
-            served_energy = sum(consumer.hourly_demand[hour] for consumer in subset)
-            plans.append((powered_names, disconnected_names, served_energy))
+    scaled_demands, scale = _scale_hour_values(hour_demands + [max_generation])
+    max_generation_scaled = scaled_demands[-1]
+    consumer_demands_scaled = scaled_demands[:-1]
+
+    states: dict[int, tuple[int, tuple[int, ...]]] = {0: (0, tuple())}
+
+    for index, demand_scaled in enumerate(consumer_demands_scaled):
+        current_states = list(states.items())
+        for served_scaled, (count, indices) in reversed(current_states):
+            new_served_scaled = served_scaled + demand_scaled
+            if new_served_scaled > max_generation_scaled:
+                continue
+
+            new_state = (count + 1, indices + (index,))
+            existing_state = states.get(new_served_scaled)
+            if existing_state is None or new_state[0] > existing_state[0]:
+                states[new_served_scaled] = new_state
+
+    plans: list[tuple[list[str], list[str], float]] = []
+    for served_scaled, (_, indices) in sorted(states.items()):
+        powered_index_set = set(indices)
+        powered_names = [consumers[index].name for index in indices]
+        disconnected_names = [
+            consumer.name
+            for index, consumer in enumerate(consumers)
+            if index not in powered_index_set
+        ]
+        served_energy = served_scaled / scale
+        plans.append((powered_names, disconnected_names, served_energy))
 
     return plans
 
@@ -94,3 +118,11 @@ def _find_cheapest_generation_plan(
         return None
 
     return min(feasible, key=lambda plan: (plan[2], plan[1], len(plan[0])))
+
+
+def _scale_hour_values(values: list[float]) -> tuple[list[int], int]:
+    decimals = [Decimal(str(value)).normalize() for value in values]
+    max_digits = max(max(0, -decimal_value.as_tuple().exponent) for decimal_value in decimals)
+    scale = 10 ** max_digits
+    scaled_values = [int(decimal_value * scale) for decimal_value in decimals]
+    return scaled_values, scale
