@@ -13,5 +13,5 @@ def simulate_day(scenario: Scenario) -> SimulationResult:
     return SimulationResult(
         scenario_name=scenario.name,
         scenario_description=scenario.description,
-        hours=hourly_plans,
+        hours=tuple(hourly_plans),
     )

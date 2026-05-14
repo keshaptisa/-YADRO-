@@ -4,15 +4,35 @@ from .models import SimulationResult
 
 
 def render_text_report(result: SimulationResult) -> str:
+    generator_column_width = max(
+        len("Активные генераторы"),
+        max(
+            (len(", ".join(hour.active_generators)) for hour in result.hours if hour.active_generators),
+            default=1,
+        ),
+    )
+    disconnected_column_width = max(
+        len("Отключенные потребители"),
+        max(
+            (
+                len(", ".join(hour.disconnected_consumers))
+                for hour in result.hours
+                if hour.disconnected_consumers
+            ),
+            default=1,
+        ),
+    )
+    header = (
+        "Час | Спрос  | Покрыто | Генерация | Цена   | "
+        f"{'Активные генераторы':<{generator_column_width}} | "
+        f"{'Отключенные потребители':<{disconnected_column_width}}"
+    )
     lines = [
         f"Сценарий: {result.scenario_name}",
         result.scenario_description,
         "",
-        (
-            "Час | Спрос  | Покрыто | Генерация | Цена   | Активные генераторы"
-            "                    | Отключенные потребители"
-        ),
-        "-" * 132,
+        header,
+        "-" * len(header),
     ]
 
     for hour in result.hours:
@@ -28,7 +48,7 @@ def render_text_report(result: SimulationResult) -> str:
             f"{hour.served_energy:6.1f} | "
             f"{hour.generated_energy:9.1f} | "
             f"{hour.hourly_cost:6.1f} | "
-            f"{generators:<38} | "
+            f"{generators:<{generator_column_width}} | "
             f"{disconnected}"
         )
 

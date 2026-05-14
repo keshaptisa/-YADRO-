@@ -80,7 +80,7 @@ class HourPlan:
 class SimulationResult:
     scenario_name: str
     scenario_description: str
-    hours: list[HourPlan]
+    hours: tuple[HourPlan, ...]
 
     @property
     def total_cost(self) -> float:
