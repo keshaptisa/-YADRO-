@@ -1,13 +1,12 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from itertools import combinations
 
 from .models import Consumer, Generator, HourPlan
 
 
 def optimize_hour(hour: int, consumers: list[Consumer], generators: list[Generator]) -> HourPlan:
-    generator_plans = _enumerate_generator_subsets(hour, generators)
+    generator_plans = _build_generator_plans(hour, generators)
     consumer_plans = _build_consumer_plans(hour, consumers, generator_plans)
 
     best_plan: HourPlan | None = None
@@ -90,19 +89,34 @@ def _build_consumer_plans(
     return plans
 
 
-def _enumerate_generator_subsets(
+def _build_generator_plans(
     hour: int, generators: list[Generator]
 ) -> list[tuple[list[str], float, float]]:
-    plans: list[tuple[list[str], float, float]] = [([], 0.0, 0.0)]
+    hour_generation = [generator.hourly_generation[hour] for generator in generators]
+    scaled_generation, scale = _scale_hour_values(hour_generation)
 
-    for subset_size in range(1, len(generators) + 1):
-        for subset in combinations(generators, subset_size):
-            active_names = [generator.name for generator in subset]
-            generated_energy = sum(generator.hourly_generation[hour] for generator in subset)
-            hourly_cost = sum(
-                generator.hourly_generation[hour] * generator.cost_per_unit for generator in subset
-            )
-            plans.append((active_names, generated_energy, hourly_cost))
+    states: dict[int, tuple[Decimal, tuple[int, ...]]] = {0: (Decimal("0"), tuple())}
+
+    for index, generator in enumerate(generators):
+        generation_scaled = scaled_generation[index]
+        hourly_cost = Decimal(str(generator.hourly_generation[hour])) * Decimal(
+            str(generator.cost_per_unit)
+        )
+        current_states = list(states.items())
+
+        for generated_scaled, (total_cost, indices) in reversed(current_states):
+            new_generated_scaled = generated_scaled + generation_scaled
+            new_state = (total_cost + hourly_cost, indices + (index,))
+            existing_state = states.get(new_generated_scaled)
+
+            if existing_state is None or _is_better_generator_state(new_state, existing_state):
+                states[new_generated_scaled] = new_state
+
+    plans: list[tuple[list[str], float, float]] = []
+    for generated_scaled, (total_cost, indices) in sorted(states.items()):
+        active_names = [generators[index].name for index in indices]
+        generated_energy = generated_scaled / scale
+        plans.append((active_names, generated_energy, float(total_cost)))
 
     return plans
 
@@ -126,3 +140,12 @@ def _scale_hour_values(values: list[float]) -> tuple[list[int], int]:
     scale = 10 ** max_digits
     scaled_values = [int(decimal_value * scale) for decimal_value in decimals]
     return scaled_values, scale
+
+
+def _is_better_generator_state(
+    new_state: tuple[Decimal, tuple[int, ...]],
+    existing_state: tuple[Decimal, tuple[int, ...]],
+) -> bool:
+    new_cost, new_indices = new_state
+    existing_cost, existing_indices = existing_state
+    return (new_cost, len(new_indices)) < (existing_cost, len(existing_indices))
